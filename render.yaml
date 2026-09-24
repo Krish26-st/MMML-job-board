@@ -1,0 +1,72 @@
+databases:
+  - name: mmml-job-board-db
+    plan: free
+    databaseName: mmml_job_board
+    user: mmml
+
+services:
+  - type: redis
+    name: mmml-job-board-redis
+    plan: free
+    ipAllowList: []
+
+  # Public FastAPI app -- this is the service whose URL you share.
+  # /admin.html is the admin panel, /board.html is the public job board.
+  - type: web
+    name: mmml-job-board-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /docs
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mmml-job-board-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: mmml-job-board-redis
+          property: connectionString
+      - key: ALLOWED_ORIGINS
+        value: "*"
+
+  # Runs sync_source / sync_all_sources. concurrency=1 keeps exactly one
+  # Chromium instance alive at a time, as specced.
+  - type: worker
+    name: mmml-job-board-worker
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    startCommand: "celery -A app.tasks.celery_app worker --loglevel=info --concurrency=1"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mmml-job-board-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: mmml-job-board-redis
+          property: connectionString
+
+  # Fires sync_all_sources every 24h. Must be a paid ("starter") plan so it
+  # keeps running continuously -- a free-tier worker can be spun down and
+  # would silently stop firing the schedule.
+  - type: worker
+    name: mmml-job-board-beat
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    startCommand: "celery -A app.tasks.celery_app beat --loglevel=info"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mmml-job-board-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: mmml-job-board-redis
+          property: connectionString

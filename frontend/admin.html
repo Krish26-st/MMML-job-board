@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Job Board — Admin</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+
+  <header class="bg-white border-b border-gray-200 px-8 py-5">
+    <h1 class="text-2xl font-bold">Job Board</h1>
+    <p id="subtitle" class="text-sm text-gray-500 mt-1">Loading…</p>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-8 py-6">
+
+    <!-- Add source -->
+    <div class="bg-white border border-gray-200 rounded-xl p-6 mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-semibold text-gray-800 flex items-center gap-2">
+          <span class="text-lg">+</span> Add job source
+        </h2>
+        <button id="syncAllBtn"
+          class="bg-gray-900 hover:bg-gray-700 text-white text-sm font-medium px-4 py-2 rounded-lg">
+          Sync all
+        </button>
+      </div>
+      <form id="addForm" class="flex flex-col md:flex-row gap-3">
+        <input id="companyName" required placeholder="Company name (e.g. Zerodha)"
+          class="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30" />
+        <input id="careersUrl" required placeholder="Careers URL (e.g. https://jobs.lever.co/zerodha)"
+          class="flex-[2] border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30" />
+        <button type="submit"
+          class="bg-red-700 hover:bg-red-800 text-white font-semibold px-6 py-2.5 rounded-lg whitespace-nowrap">
+          Add & Sync
+        </button>
+      </form>
+      <p class="text-xs text-gray-400 mt-3">
+        Greenhouse, Lever, Workday (myworkdayjobs.com), and Ashby URLs are detected automatically and use each
+        provider's structured JSON API. Any other URL falls back to the custom Playwright scraper.
+      </p>
+      <p class="text-xs text-gray-400 mt-1">
+        Every job is filtered to: <span class="font-medium text-gray-600">India-based or remote</span>, and
+        <span class="font-medium text-gray-600">finance / finance-related</span> — applied the same way across all source types.
+      </p>
+    </div>
+
+    <div id="errorBox" class="hidden bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg mb-4"></div>
+
+    <!-- Table -->
+    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+          <tr>
+            <th class="text-left px-6 py-3">Company</th>
+            <th class="text-left px-6 py-3">Type</th>
+            <th class="text-left px-6 py-3">Status</th>
+            <th class="text-left px-6 py-3">Jobs</th>
+            <th class="text-left px-6 py-3">Last sync</th>
+            <th class="px-6 py-3"></th>
+          </tr>
+        </thead>
+        <tbody id="tableBody" class="divide-y divide-gray-100"></tbody>
+      </table>
+      <p id="emptyState" class="hidden text-center text-gray-400 text-sm py-10">
+        No sources yet. Add a careers URL above to get started.
+      </p>
+    </div>
+  </main>
+
+  <div id="jobsModal" class="hidden fixed inset-0 bg-black/40 flex items-start justify-center p-6 z-50 overflow-y-auto">
+    <div class="bg-white rounded-xl max-w-lg w-full mt-16 max-h-[80vh] flex flex-col">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <h3 id="jobsModalTitle" class="font-semibold text-sm"></h3>
+        <button id="jobsModalClose" class="text-gray-400 hover:text-gray-700 text-xl leading-none">&times;</button>
+      </div>
+      <div id="jobsModalBody" class="overflow-y-auto px-5 py-4"></div>
+    </div>
+  </div>
+
+<script>
+const API = ""; // same-origin; point this at your API base URL if hosted separately
+
+function statusBadge(status) {
+  const map = {
+    active: "bg-green-50 text-green-700",
+    syncing: "bg-amber-50 text-amber-700",
+    error: "bg-red-50 text-red-700",
+  };
+  const cls = map[status] || "bg-gray-100 text-gray-600";
+  return `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${cls}">${status}</span>`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short" }) + ", " +
+         d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+async function loadSources() {
+  const res = await fetch(`${API}/admin/sources`);
+  const sources = await res.json();
+
+  const totalJobs = sources.reduce((sum, s) => sum + (s.job_count || 0), 0);
+  document.getElementById("subtitle").textContent =
+    `${sources.length} source${sources.length === 1 ? "" : "s"} · ${totalJobs} job${totalJobs === 1 ? "" : "s"} indexed`;
+
+  const body = document.getElementById("tableBody");
+  const empty = document.getElementById("emptyState");
+  body.innerHTML = "";
+
+  if (sources.length === 0) {
+    empty.classList.remove("hidden");
+    return;
+  }
+  empty.classList.add("hidden");
+
+  for (const s of sources) {
+    const tr = document.createElement("tr");
+    tr.className = "hover:bg-gray-50";
+    tr.innerHTML = `
+      <td class="px-6 py-4">
+        <div class="font-medium text-gray-900">${escapeHtml(s.company_name)}</div>
+        <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener"
+           class="text-xs text-gray-400 hover:text-gray-600">${escapeHtml(s.url)} ↗</a>
+      </td>
+      <td class="px-6 py-4 capitalize text-gray-600">${s.source_type}</td>
+      <td class="px-6 py-4">${statusBadge(s.status)}</td>
+      <td class="px-6 py-4">
+        <button data-view="${s.id}" data-name="${escapeHtml(s.company_name)}" class="font-medium text-red-700 hover:underline">${s.job_count}</button>
+      </td>
+      <td class="px-6 py-4 text-gray-500">${fmtDate(s.last_sync)}</td>
+      <td class="px-6 py-4">
+        <div class="flex items-center gap-3 justify-end">
+          <button title="Sync now" data-sync="${s.id}" class="text-gray-400 hover:text-gray-700">⟳</button>
+          <button title="Delete" data-del="${s.id}" class="text-gray-400 hover:text-red-600">🗑</button>
+        </div>
+      </td>`;
+    body.appendChild(tr);
+  }
+
+  body.querySelectorAll("[data-sync]").forEach(btn => {
+    btn.addEventListener("click", () => syncOne(btn.dataset.sync, btn));
+  });
+  body.querySelectorAll("[data-del]").forEach(btn => {
+    btn.addEventListener("click", () => deleteSource(btn.dataset.del));
+  });
+  body.querySelectorAll("[data-view]").forEach(btn => {
+    btn.addEventListener("click", () => viewJobs(btn.dataset.view, btn.dataset.name));
+  });
+}
+
+async function viewJobs(id, name) {
+  const jobsRes = await fetch(`${API}/api/companies/${id}/jobs`);
+  const jobs = await jobsRes.json();
+  const rows = jobs.length
+    ? jobs.map(j => `<div class="py-2 border-b border-gray-100 last:border-0">
+         <div class="text-sm font-medium">${escapeHtml(j.title || "Untitled role")}</div>
+         <div class="text-xs text-gray-400">${escapeHtml(j.location || "—")}${j.url ? ` · <a href="${escapeHtml(j.url)}" target="_blank" class="text-red-700">open ↗</a>` : ""}</div>
+       </div>`).join("")
+    : `<div class="text-sm text-gray-400 py-6 text-center">No listings indexed after filters for this source yet.</div>`;
+
+  const win = document.getElementById("jobsModalBody");
+  win.innerHTML = rows;
+  document.getElementById("jobsModalTitle").textContent = `${name} — ${jobs.length} filtered role${jobs.length === 1 ? "" : "s"}`;
+  document.getElementById("jobsModal").classList.remove("hidden");
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function syncOne(id, btn) {
+  btn.classList.add("spin");
+  await fetch(`${API}/admin/sources/${id}/sync`, { method: "POST" });
+  setTimeout(loadSources, 1500);
+}
+
+async function deleteSource(id) {
+  if (!confirm("Remove this source from the job board?")) return;
+  await fetch(`${API}/admin/sources/${id}`, { method: "DELETE" });
+  loadSources();
+}
+
+document.getElementById("addForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById("errorBox");
+  errorBox.classList.add("hidden");
+
+  const company_name = document.getElementById("companyName").value.trim();
+  const url = document.getElementById("careersUrl").value.trim();
+
+  const res = await fetch(`${API}/admin/sources`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ company_name, url }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    errorBox.textContent = err.detail || "Something went wrong adding this source.";
+    errorBox.classList.remove("hidden");
+    return;
+  }
+
+  document.getElementById("addForm").reset();
+  loadSources();
+});
+
+document.getElementById("syncAllBtn").addEventListener("click", async () => {
+  await fetch(`${API}/admin/sources/sync-all`, { method: "POST" });
+  setTimeout(loadSources, 1500);
+});
+
+document.getElementById("jobsModalClose").addEventListener("click", () => {
+  document.getElementById("jobsModal").classList.add("hidden");
+});
+document.getElementById("jobsModal").addEventListener("click", (e) => {
+  if (e.target.id === "jobsModal") document.getElementById("jobsModal").classList.add("hidden");
+});
+
+loadSources();
+setInterval(loadSources, 10000); // light auto-refresh so syncing/active states update
+</script>
+</body>
+</html>

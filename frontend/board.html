@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Job Board</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }</style>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+  <main class="max-w-5xl mx-auto px-6 py-12">
+    <h1 class="text-3xl font-bold mb-2">Finance roles in India</h1>
+    <p class="text-gray-500 mb-6">India-based or remote finance roles, pulled live from each company's careers page.</p>
+
+    <div class="flex gap-1 border-b border-gray-200 mb-6">
+      <button data-tab="company" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-red-700 text-red-700">
+        By company
+      </button>
+      <button data-tab="all" class="tab-btn px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+        All jobs
+      </button>
+    </div>
+
+    <div id="view-company">
+      <div id="grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      <p id="emptyCompany" class="hidden text-gray-400 text-center py-16">No open roles indexed right now — check back soon.</p>
+    </div>
+
+    <div id="view-all" class="hidden">
+      <input id="searchBox" type="text" placeholder="Search by title, company, or location…"
+        class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-red-500/30" />
+      <div id="allList" class="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100"></div>
+      <p id="emptyAll" class="hidden text-gray-400 text-center py-16">No jobs match your search.</p>
+    </div>
+  </main>
+
+  <div id="modalBackdrop" class="hidden fixed inset-0 bg-black/40 flex items-start justify-center p-6 z-50 overflow-y-auto">
+    <div class="bg-white rounded-xl max-w-lg w-full mt-16 max-h-[80vh] flex flex-col">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <h3 id="modalTitle" class="font-semibold"></h3>
+        <button id="modalClose" class="text-gray-400 hover:text-gray-700 text-xl leading-none">&times;</button>
+      </div>
+      <div id="modalBody" class="overflow-y-auto px-5 py-4 divide-y divide-gray-100"></div>
+    </div>
+  </div>
+
+<script>
+const API = "";
+let allJobsCache = [];
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str ?? "";
+  return div.innerHTML;
+}
+
+function jobRow(j, showCompany) {
+  return `
+    <div class="px-5 py-3 hover:bg-gray-50">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <div class="font-medium text-sm text-gray-900">
+            ${j.url ? `<a href="${escapeHtml(j.url)}" target="_blank" rel="noopener" class="hover:text-red-700">${escapeHtml(j.title || "Untitled role")}</a>` : escapeHtml(j.title || "Untitled role")}
+          </div>
+          <div class="text-xs text-gray-400 mt-0.5">
+            ${showCompany ? `${escapeHtml(j.company)} · ` : ""}${escapeHtml(j.location || "Location not specified")}
+          </div>
+        </div>
+        ${j.url ? `<a href="${escapeHtml(j.url)}" target="_blank" rel="noopener" class="text-xs text-red-700 font-medium whitespace-nowrap self-center">Apply →</a>` : ""}
+      </div>
+    </div>`;
+}
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => {
+      b.classList.remove("border-red-700", "text-red-700");
+      b.classList.add("border-transparent", "text-gray-500");
+    });
+    btn.classList.add("border-red-700", "text-red-700");
+    btn.classList.remove("border-transparent", "text-gray-500");
+
+    document.getElementById("view-company").classList.toggle("hidden", btn.dataset.tab !== "company");
+    document.getElementById("view-all").classList.toggle("hidden", btn.dataset.tab !== "all");
+  });
+});
+
+async function loadCompanies() {
+  const res = await fetch(`${API}/api/board`);
+  const companies = await res.json();
+  const grid = document.getElementById("grid");
+  const empty = document.getElementById("emptyCompany");
+  grid.innerHTML = "";
+
+  const withJobs = companies.filter(c => c.job_count > 0);
+  empty.classList.toggle("hidden", withJobs.length !== 0);
+
+  for (const c of withJobs) {
+    const card = document.createElement("button");
+    card.className = "text-left bg-white border border-gray-200 rounded-xl p-5 hover:border-red-300 hover:shadow-sm transition";
+    card.innerHTML = `
+      <div class="font-semibold text-gray-900">${escapeHtml(c.company)}</div>
+      <div class="text-2xl font-bold text-red-700 mt-2">${c.job_count}</div>
+      <div class="text-xs text-gray-400 mt-1">open role${c.job_count === 1 ? "" : "s"} in India / remote</div>
+    `;
+    card.addEventListener("click", () => openCompanyModal(c.id, c.company));
+    grid.appendChild(card);
+  }
+}
+
+async function openCompanyModal(id, company) {
+  const res = await fetch(`${API}/api/companies/${id}/jobs`);
+  const jobs = await res.json();
+  document.getElementById("modalTitle").textContent = `${company} — ${jobs.length} role${jobs.length === 1 ? "" : "s"}`;
+  document.getElementById("modalBody").innerHTML = jobs.length
+    ? jobs.map(j => jobRow(j, false)).join("")
+    : `<p class="text-gray-400 text-sm py-6 text-center">No individual listings indexed for this source yet.</p>`;
+  document.getElementById("modalBackdrop").classList.remove("hidden");
+}
+
+document.getElementById("modalClose").addEventListener("click", () => {
+  document.getElementById("modalBackdrop").classList.add("hidden");
+});
+document.getElementById("modalBackdrop").addEventListener("click", (e) => {
+  if (e.target.id === "modalBackdrop") document.getElementById("modalBackdrop").classList.add("hidden");
+});
+
+async function loadAllJobs() {
+  const res = await fetch(`${API}/api/jobs`);
+  allJobsCache = await res.json();
+  renderAllJobs(allJobsCache);
+}
+
+function renderAllJobs(jobs) {
+  const list = document.getElementById("allList");
+  const empty = document.getElementById("emptyAll");
+  list.innerHTML = jobs.map(j => jobRow(j, true)).join("");
+  empty.classList.toggle("hidden", jobs.length !== 0);
+}
+
+document.getElementById("searchBox").addEventListener("input", (e) => {
+  const q = e.target.value.trim().toLowerCase();
+  if (!q) return renderAllJobs(allJobsCache);
+  renderAllJobs(allJobsCache.filter(j =>
+    (j.title || "").toLowerCase().includes(q) ||
+    (j.company || "").toLowerCase().includes(q) ||
+    (j.location || "").toLowerCase().includes(q)
+  ));
+});
+
+loadCompanies();
+loadAllJobs();
+setInterval(() => { loadCompanies(); loadAllJobs(); }, 30000);
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+venv/
+.env
+job_board.db
+*.db
+.DS_Store
