@@ -16,9 +16,9 @@ services:
     name: mmml-job-board-api
     env: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: free
     healthCheckPath: /docs
-    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    dockerCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -38,8 +38,8 @@ services:
     name: mmml-job-board-worker
     env: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
-    startCommand: "celery -A app.tasks.celery_app worker --loglevel=info --concurrency=1"
+    plan: free
+    dockerCommand: "celery -A app.tasks.celery_app worker --loglevel=info --concurrency=1"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -51,15 +51,16 @@ services:
           name: mmml-job-board-redis
           property: connectionString
 
-  # Fires sync_all_sources every 24h. Must be a paid ("starter") plan so it
-  # keeps running continuously -- a free-tier worker can be spun down and
-  # would silently stop firing the schedule.
+  # Fires sync_all_sources every 24h. On the free plan this service can be
+  # spun down / recycled by Render, which means the schedule may not fire
+  # exactly every 24h in practice -- use the admin panel's "Sync all" button
+  # to trigger a sync manually any time you want a guaranteed refresh.
   - type: worker
     name: mmml-job-board-beat
     env: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
-    startCommand: "celery -A app.tasks.celery_app beat --loglevel=info"
+    plan: free
+    dockerCommand: "celery -A app.tasks.celery_app beat --loglevel=info"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
