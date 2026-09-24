@@ -4,12 +4,14 @@ databases:
     databaseName: mmml_job_board
     user: mmml
 
-services:
-  - type: redis
-    name: mmml-job-board-redis
-    plan: free
-    ipAllowList: []
+# NOTE: Render caps free accounts at 1 free Redis/Key-Value instance total,
+# which is what "cannot have more than 1 free tier Key Value instance"
+# means -- it's an account-wide limit, not specific to this project. Rather
+# than fight that cap, REDIS_URL below is a plain env var you paste in
+# yourself, pointed at a free external Redis (Upstash works well and has no
+# such cap). See the README's "Deploying" section for the two-minute setup.
 
+services:
   # Public FastAPI app -- this is the service whose URL you share.
   # /admin.html is the admin panel, /board.html is the public job board.
   - type: web
@@ -25,10 +27,7 @@ services:
           name: mmml-job-board-db
           property: connectionString
       - key: REDIS_URL
-        fromService:
-          type: redis
-          name: mmml-job-board-redis
-          property: connectionString
+        sync: false
       - key: ALLOWED_ORIGINS
         value: "*"
 
@@ -46,10 +45,7 @@ services:
           name: mmml-job-board-db
           property: connectionString
       - key: REDIS_URL
-        fromService:
-          type: redis
-          name: mmml-job-board-redis
-          property: connectionString
+        sync: false
 
   # Fires sync_all_sources every 24h. On the free plan this service can be
   # spun down / recycled by Render, which means the schedule may not fire
@@ -67,7 +63,4 @@ services:
           name: mmml-job-board-db
           property: connectionString
       - key: REDIS_URL
-        fromService:
-          type: redis
-          name: mmml-job-board-redis
-          property: connectionString
+        sync: false

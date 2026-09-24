@@ -78,14 +78,31 @@ can tune it per-board if a specific company's page needs a different rule.
 
 This app has real infrastructure — an API, a Celery worker, Celery beat, and
 Redis — so it can't run as a static hosted page. The included
-`render.yaml` deploys all of it on [Render](https://render.com) in one shot
-via their **Blueprint** feature.
+`render.yaml` deploys the API, worker, beat, and a Postgres database on
+[Render](https://render.com) in one shot via their **Blueprint** feature.
+
+**About Redis:** Render caps free accounts at *one* free Redis/Key-Value
+instance total (account-wide, not per-project) — if you hit "cannot have
+more than 1 free tier Key Value instance," that's this cap, not a bug in the
+blueprint. Rather than fight it, `render.yaml` doesn't create a Render Redis
+at all; instead you point `REDIS_URL` at a free external Redis. Two minutes
+on [Upstash](https://upstash.com) gets you one with no such cap:
+
+1. Sign up at upstash.com (free, no card needed) → **Create Database** →
+   pick any region → **Create**.
+2. On the database's page, copy the connection string labeled something
+   like "Redis Connect" / `ioredis` / `redis://` — it looks like
+   `redis://default:xxxxxxxx@some-name.upstash.io:6379`.
+3. Keep that value handy for step 3 below.
+
+Then:
 
 1. Push this folder to a new GitHub repo.
 2. On Render: **New → Blueprint**, connect the repo. Render reads
-   `render.yaml` and provisions all 4 pieces automatically: the public API
-   (`mmml-job-board-api`), the sync worker, the beat scheduler, Redis, and a
-   free Postgres database wired together already.
+   `render.yaml`. Because `REDIS_URL` is marked as a secret
+   (`sync: false`), Render will prompt you to paste in a value for it —
+   paste the same Upstash connection string for all three services (api,
+   worker, beat) when asked.
 3. Click **Apply**. First build takes a few minutes (Playwright's Chromium
    image is large).
 4. Once live, Render gives `mmml-job-board-api` a public URL like
@@ -94,19 +111,23 @@ via their **Blueprint** feature.
    - `https://mmml-job-board-api.onrender.com/board.html` — public job board
 
 **Worth knowing:**
-- The blueprint uses Render's paid **Starter** plan (a few dollars/month per
-  service) for the API, worker, and beat — free-tier services spin down when
-  idle, which would silently break the 24h auto-sync schedule and make the
-  admin panel slow to wake up. Redis and Postgres are on free tiers, which
-  is fine for this workload.
+- Every Render service in `render.yaml` is on the **free** plan, including
+  Postgres. Free web/worker instances can be spun down or recycled by
+  Render when idle, so the `beat` service's 24h auto-schedule may not fire
+  reliably. If a sync looks stale, just open the admin panel and hit
+  **Sync all** — that always works regardless of beat's state, since it
+  queues the sync directly through the (also free) `api` service and Redis.
+- Upstash's free tier has its own generous-but-real request cap; this app's
+  traffic to Redis (Celery task queuing + a light DB-driven admin UI) is
+  small enough that it's very unlikely to be an issue.
+- Free Postgres on Render expires after 90 days unless upgraded — fine for
+  testing/demoing, worth knowing if you're keeping this long-term.
 - Railway and Fly.io both work too if you'd rather use those — same idea:
-  one service per process (api / worker / beat), a shared Redis instance,
-  and `DATABASE_URL` / `REDIS_URL` env vars wired between them. The
+  one service per process (api / worker / beat), a Redis instance (Railway
+  does offer its own free Redis add-on with a more generous cap), and
+  `DATABASE_URL` / `REDIS_URL` env vars wired between them. The
   `docker-compose.yml` in this repo is the reference for what each service's
   start command should be.
-- If you want a fully free option to start, you can run just the `api` +
-  `worker` services (skip `beat`) and manually hit **Sync all** in the admin
-  panel instead of relying on the 24h auto-schedule.
 
 ## Running locally
 
