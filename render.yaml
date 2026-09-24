@@ -4,23 +4,24 @@ databases:
     databaseName: mmml_job_board
     user: mmml
 
-# NOTE: Render caps free accounts at 1 free Redis/Key-Value instance total,
-# which is what "cannot have more than 1 free tier Key Value instance"
-# means -- it's an account-wide limit, not specific to this project. Rather
-# than fight that cap, REDIS_URL below is a plain env var you paste in
-# yourself, pointed at a free external Redis (Upstash works well and has no
-# such cap). See the README's "Deploying" section for the two-minute setup.
-
+# Render's free plan doesn't offer the "Background Worker" service type at
+# all (that's what "service type is not available for this plan" means) --
+# only Web Services have a free tier. So there's a single service here: the
+# Celery worker and beat run as background processes inside the same
+# container as the web app (see start.sh / Dockerfile), all under Render's
+# one free Web Service.
+#
+# REDIS_URL is a secret (sync: false) -- Render will prompt for it during
+# Blueprint setup. Paste in a free external Redis URL (Upstash works well;
+# see the README's "Deploying" section) since Render also caps free
+# accounts at 1 free Redis instance total.
 services:
-  # Public FastAPI app -- this is the service whose URL you share.
-  # /admin.html is the admin panel, /board.html is the public job board.
   - type: web
     name: mmml-job-board-api
     env: docker
     dockerfilePath: ./Dockerfile
     plan: free
     healthCheckPath: /docs
-    dockerCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -30,37 +31,3 @@ services:
         sync: false
       - key: ALLOWED_ORIGINS
         value: "*"
-
-  # Runs sync_source / sync_all_sources. concurrency=1 keeps exactly one
-  # Chromium instance alive at a time, as specced.
-  - type: worker
-    name: mmml-job-board-worker
-    env: docker
-    dockerfilePath: ./Dockerfile
-    plan: free
-    dockerCommand: "celery -A app.tasks.celery_app worker --loglevel=info --concurrency=1"
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: mmml-job-board-db
-          property: connectionString
-      - key: REDIS_URL
-        sync: false
-
-  # Fires sync_all_sources every 24h. On the free plan this service can be
-  # spun down / recycled by Render, which means the schedule may not fire
-  # exactly every 24h in practice -- use the admin panel's "Sync all" button
-  # to trigger a sync manually any time you want a guaranteed refresh.
-  - type: worker
-    name: mmml-job-board-beat
-    env: docker
-    dockerfilePath: ./Dockerfile
-    plan: free
-    dockerCommand: "celery -A app.tasks.celery_app beat --loglevel=info"
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: mmml-job-board-db
-          property: connectionString
-      - key: REDIS_URL
-        sync: false

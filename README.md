@@ -77,57 +77,57 @@ can tune it per-board if a specific company's page needs a different rule.
 ## Deploying (get a shareable public link)
 
 This app has real infrastructure — an API, a Celery worker, Celery beat, and
-Redis — so it can't run as a static hosted page. The included
-`render.yaml` deploys the API, worker, beat, and a Postgres database on
-[Render](https://render.com) in one shot via their **Blueprint** feature.
+Redis — so it can't run as a static hosted page. The included `render.yaml`
+deploys it on [Render](https://render.com) for free via their **Blueprint**
+feature.
 
-**About Redis:** Render caps free accounts at *one* free Redis/Key-Value
-instance total (account-wide, not per-project) — if you hit "cannot have
-more than 1 free tier Key Value instance," that's this cap, not a bug in the
-blueprint. Rather than fight it, `render.yaml` doesn't create a Render Redis
-at all; instead you point `REDIS_URL` at a free external Redis. Two minutes
-on [Upstash](https://upstash.com) gets you one with no such cap:
+**Two Render free-plan quirks this works around:**
+- Render caps free accounts at *one* free Redis instance total
+  (account-wide) — "cannot have more than 1 free tier Key Value instance."
+- Render's free plan doesn't offer the **Background Worker** service type at
+  all — only Web Services get a free tier — which is what throws "service
+  type is not available for this plan" if you try to deploy the Celery
+  worker/beat as their own services.
 
-1. Sign up at upstash.com (free, no card needed) → **Create Database** →
-   pick any region → **Create**.
-2. On the database's page, copy the connection string labeled something
-   like "Redis Connect" / `ioredis` / `redis://` — it looks like
-   `redis://default:xxxxxxxx@some-name.upstash.io:6379`.
-3. Keep that value handy for step 3 below.
+So `render.yaml` deploys a **single** free Web Service, and inside that one
+container, `start.sh` runs the Celery worker and beat as background
+processes alongside uvicorn (see `Dockerfile` / `start.sh`). Redis comes
+from a free external provider instead of Render's own Redis add-on.
 
-Then:
+**Setup:**
 
-1. Push this folder to a new GitHub repo.
-2. On Render: **New → Blueprint**, connect the repo. Render reads
-   `render.yaml`. Because `REDIS_URL` is marked as a secret
-   (`sync: false`), Render will prompt you to paste in a value for it —
-   paste the same Upstash connection string for all three services (api,
-   worker, beat) when asked.
-3. Click **Apply**. First build takes a few minutes (Playwright's Chromium
+1. Get a free Redis URL from [Upstash](https://upstash.com) (no card
+   needed): sign up → **Create Database** → any region → **Create** → copy
+   the `redis://...` connection string shown on its page.
+2. Push this folder to a GitHub repo.
+3. On Render: **New → Blueprint**, connect the repo. Render reads
+   `render.yaml`. Because `REDIS_URL` is marked as a secret (`sync: false`),
+   it'll prompt you to paste one in — paste the Upstash URL from step 1.
+4. Click **Apply**. First build takes a few minutes (Playwright's Chromium
    image is large).
-4. Once live, Render gives `mmml-job-board-api` a public URL like
+5. Once live, Render gives `mmml-job-board-api` a public URL like
    `https://mmml-job-board-api.onrender.com`. Share:
    - `https://mmml-job-board-api.onrender.com/admin.html` — admin panel
    - `https://mmml-job-board-api.onrender.com/board.html` — public job board
 
 **Worth knowing:**
-- Every Render service in `render.yaml` is on the **free** plan, including
-  Postgres. Free web/worker instances can be spun down or recycled by
-  Render when idle, so the `beat` service's 24h auto-schedule may not fire
-  reliably. If a sync looks stale, just open the admin panel and hit
-  **Sync all** — that always works regardless of beat's state, since it
-  queues the sync directly through the (also free) `api` service and Redis.
-- Upstash's free tier has its own generous-but-real request cap; this app's
-  traffic to Redis (Celery task queuing + a light DB-driven admin UI) is
-  small enough that it's very unlikely to be an issue.
-- Free Postgres on Render expires after 90 days unless upgraded — fine for
-  testing/demoing, worth knowing if you're keeping this long-term.
-- Railway and Fly.io both work too if you'd rather use those — same idea:
-  one service per process (api / worker / beat), a Redis instance (Railway
-  does offer its own free Redis add-on with a more generous cap), and
-  `DATABASE_URL` / `REDIS_URL` env vars wired between them. The
-  `docker-compose.yml` in this repo is the reference for what each service's
-  start command should be.
+- Everything here is free, but that comes with real trade-offs: a free
+  Render web service spins down after ~15 minutes of no HTTP traffic, and
+  the worker + beat inside the same container go down with it. They all
+  come back up together on the next request (with a ~30–60s cold start),
+  so the 24h auto-sync won't fire while the service is asleep — use the
+  admin panel's **Sync all** button any time you want a guaranteed refresh.
+  If that trade-off ever stops being worth it, moving the worker/beat back
+  to their own Render **Background Worker** services (a few dollars/month
+  each) is a clean upgrade path — the old separate-service
+  `docker-compose.yml` layout is exactly what that would mirror.
+- Free Postgres on Render expires after 90 days unless upgraded.
+- Railway and Fly.io both work too if you'd rather use those — Railway in
+  particular does offer real free Background Worker–style services and its
+  own free Redis add-on with a more generous cap, so the original
+  api/worker/beat/redis 4-service split (mirroring `docker-compose.yml`)
+  can be deployed as-is there without needing this single-container
+  workaround.
 
 ## Running locally
 
@@ -216,6 +216,8 @@ app/
 frontend/
   admin.html           Admin panel (add source, sync, table, sync all, job preview)
   board.html             Public-facing job board (by-company + all-jobs tabs)
-docker-compose.yml       redis + api + worker(-c 1) + beat
+docker-compose.yml       redis + api + worker(-c 1) + beat (local dev: 4 separate services)
 Dockerfile                Playwright's official Python image (chromium preinstalled)
+start.sh                   Render free-plan deploy: runs worker+beat+uvicorn in one container
+render.yaml                 Render Blueprint (single free Web Service, see "Deploying")
 ```
