@@ -54,16 +54,16 @@
     <div id="errorBox" class="hidden bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg mb-4"></div>
 
     <!-- Table -->
-    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <table class="w-full text-sm">
+    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden overflow-x-auto">
+      <table class="w-full text-sm table-fixed min-w-[820px]">
         <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
           <tr>
-            <th class="text-left px-6 py-3">Company</th>
-            <th class="text-left px-6 py-3">Type</th>
-            <th class="text-left px-6 py-3">Status</th>
-            <th class="text-left px-6 py-3">Jobs</th>
-            <th class="text-left px-6 py-3">Last sync</th>
-            <th class="px-6 py-3"></th>
+            <th class="text-left px-6 py-3 w-[26%]">Company</th>
+            <th class="text-left px-6 py-3 w-[10%]">Type</th>
+            <th class="text-left px-6 py-3 w-[14%]">Status</th>
+            <th class="text-left px-6 py-3 w-[8%]">Jobs</th>
+            <th class="text-left px-6 py-3 w-[16%]">Last sync</th>
+            <th class="px-6 py-3 w-[26%]"></th>
           </tr>
         </thead>
         <tbody id="tableBody" class="divide-y divide-gray-100"></tbody>
@@ -136,10 +136,10 @@ async function loadSources() {
     const tr = document.createElement("tr");
     tr.className = "hover:bg-gray-50";
     tr.innerHTML = `
-      <td class="px-6 py-4">
-        <div class="font-medium text-gray-900">${escapeHtml(s.company_name)}</div>
-        <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener"
-           class="text-xs text-gray-400 hover:text-gray-600">${escapeHtml(s.url)} ↗</a>
+      <td class="px-6 py-4 overflow-hidden">
+        <div class="font-medium text-gray-900 truncate" title="${escapeHtml(s.company_name)}">${escapeHtml(s.company_name)}</div>
+        <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener" title="${escapeHtml(s.url)}"
+           class="block text-xs text-gray-400 hover:text-gray-600 truncate">${escapeHtml(s.url)} ↗</a>
       </td>
       <td class="px-6 py-4 capitalize text-gray-600">${s.source_type}</td>
       <td class="px-6 py-4">
