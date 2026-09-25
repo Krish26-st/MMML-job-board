@@ -152,6 +152,8 @@ async function loadSources() {
       <td class="px-6 py-4 text-gray-500">${fmtDate(s.last_sync)}</td>
       <td class="px-6 py-4">
         <div class="flex items-center gap-3 justify-end">
+          <button title="View jobs" data-view2="${s.id}" data-name2="${escapeHtml(s.company_name)}"
+            class="text-gray-400 hover:text-red-700" aria-label="View jobs">👁</button>
           <button title="Sync now" data-sync="${s.id}" class="text-gray-400 hover:text-gray-700">⟳</button>
           <button title="Delete" data-del="${s.id}" class="text-gray-400 hover:text-red-600">🗑</button>
         </div>
@@ -167,6 +169,9 @@ async function loadSources() {
   });
   body.querySelectorAll("[data-view]").forEach(btn => {
     btn.addEventListener("click", () => viewJobs(btn.dataset.view, btn.dataset.name));
+  });
+  body.querySelectorAll("[data-view2]").forEach(btn => {
+    btn.addEventListener("click", () => viewJobs(btn.dataset.view2, btn.dataset.name2));
   });
 }
 
