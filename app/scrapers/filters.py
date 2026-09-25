@@ -14,16 +14,36 @@ tune without touching any scraper's fetch logic.
 import re
 from .detector import is_india_location
 
-REMOTE_KEYWORDS = ["remote", "work from home", "wfh", "distributed team", "anywhere"]
-
-# If a listing says "remote" but also names a specific non-India region, it's
-# very likely remote-within-that-region rather than open to India — treat it
-# as excluded rather than blindly matching on the word "remote" alone.
-EXCLUDED_REMOTE_REGIONS = [
-    "united states", "usa", " us ", "us only", "uk", "united kingdom",
-    "canada", "germany", "france", "singapore", "australia", "ireland",
-    "spain", "netherlands", "emea", "americas", "latam", "japan", "china",
+REMOTE_KEYWORDS = [
+    "remote", "work from home", "wfh", "distributed team", "anywhere",
+    "fully remote", "100% remote", "work remotely",
 ]
+
+# Words stripped out before checking whether anything *specific* is left in
+# a "remote" location string. This replaces a fixed blacklist of country
+# names (which broke on any new phrasing -- "Remote (US)", "Remote NA",
+# "Remote - APAC" all slipped through a literal "united states" / " us "
+# style list). Instead: strip every generic/remote/employment-type word,
+# and if a specific place name is still sitting there afterwards (a
+# country, a region code, a city), treat it as NOT genuinely open remote
+# work -- only reject-free, no-region-attached "remote" listings pass.
+_REMOTE_NOISE_WORDS = {
+    "remote", "work", "from", "home", "wfh", "distributed", "team",
+    "anywhere", "fully", "100", "remotely", "only", "based", "eligible",
+    "role", "position", "job", "in", "the", "for", "candidates", "hybrid",
+    "office", "or", "and", "location", "flexible",
+    "worldwide", "global", "international",  # explicitly unrestricted
+    "full", "time", "part", "contract", "permanent", "temporary",       # employment type, not geography
+}
+
+
+def _leftover_after_stripping_remote_noise(location: str) -> str:
+    # Normalize punctuation to spaces first so "(US)" / "US," / "US)"
+    # behave the same as " US " -- the old blacklist approach broke
+    # specifically because it required exact space-padding.
+    cleaned = re.sub(r"[^a-z0-9]+", " ", location.lower())
+    tokens = [t for t in cleaned.split() if t not in _REMOTE_NOISE_WORDS]
+    return " ".join(tokens).strip()
 
 FINANCE_KEYWORDS = [
     "financ", "accounting", "accountant", "treasury", "taxation", " tax ",
@@ -44,10 +64,15 @@ _FINANCE_PATTERN = re.compile("|".join(re.escape(k) for k in FINANCE_KEYWORDS), 
 def is_remote(location: str | None) -> bool:
     if not location:
         return False
-    padded = f" {location.lower()} "
-    if not any(k in padded for k in REMOTE_KEYWORDS):
+    low = location.lower()
+    if not any(k in f" {low} " for k in REMOTE_KEYWORDS):
         return False
-    return not any(r in padded for r in EXCLUDED_REMOTE_REGIONS)
+    # "remote" was mentioned -- now make sure nothing specific rides along
+    # with it (a country, "NA", "APAC", a city, etc). Only a genuinely
+    # unrestricted remote listing (or one that explicitly says India,
+    # already handled by is_india_location before this ever runs) passes.
+    leftover = _leftover_after_stripping_remote_noise(low)
+    return leftover == ""
 
 
 def passes_location_filter(location: str | None) -> bool:
