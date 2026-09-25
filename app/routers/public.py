@@ -29,7 +29,10 @@ def board(db: Session = Depends(get_db)):
 @router.get("/companies/{source_id}/jobs")
 def company_jobs(source_id: int, db: Session = Depends(get_db)):
     jobs = db.query(models.Job).filter(models.Job.source_id == source_id).all()
-    return [{"title": j.title, "location": j.location, "url": j.url} for j in jobs]
+    return [
+        {"title": j.title, "location": j.location, "department": j.department, "url": j.url}
+        for j in jobs
+    ]
 
 
 @router.get("/jobs")
@@ -51,6 +54,7 @@ def all_jobs(db: Session = Depends(get_db)):
             "source_id": job.source_id,
             "title": job.title,
             "location": job.location,
+            "department": job.department,
             "url": job.url,
         }
         for job, company_name in rows

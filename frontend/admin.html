@@ -80,7 +80,7 @@
         <h3 id="jobsModalTitle" class="font-semibold text-sm"></h3>
         <button id="jobsModalClose" class="text-gray-400 hover:text-gray-700 text-xl leading-none">&times;</button>
       </div>
-      <div id="jobsModalBody" class="overflow-y-auto px-5 py-4"></div>
+      <div id="jobsModalBody" class="overflow-y-auto px-5 py-4 grid sm:grid-cols-2 gap-3"></div>
     </div>
   </div>
 
@@ -100,8 +100,18 @@ function statusBadge(status) {
 function fmtDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short" }) + ", " +
-         d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  // Explicit Asia/Kolkata regardless of the viewer's own browser/OS
+  // timezone, so "last sync" reads the same for everyone looking at this
+  // admin panel, wherever they are.
+  const formatted = d.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `${formatted} IST`;
 }
 
 async function loadSources() {
@@ -163,15 +173,22 @@ async function loadSources() {
 async function viewJobs(id, name) {
   const jobsRes = await fetch(`${API}/api/companies/${id}/jobs`);
   const jobs = await jobsRes.json();
-  const rows = jobs.length
-    ? jobs.map(j => `<div class="py-2 border-b border-gray-100 last:border-0">
-         <div class="text-sm font-medium">${escapeHtml(j.title || "Untitled role")}</div>
-         <div class="text-xs text-gray-400">${escapeHtml(j.location || "—")}${j.url ? ` · <a href="${escapeHtml(j.url)}" target="_blank" class="text-red-700">open ↗</a>` : ""}</div>
-       </div>`).join("")
-    : `<div class="text-sm text-gray-400 py-6 text-center">No listings indexed after filters for this source yet.</div>`;
+  const cards = jobs.length
+    ? jobs.map(j => {
+        const badges = [
+          j.location ? `<span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">${escapeHtml(j.location)}</span>` : "",
+          j.department ? `<span class="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded-full">${escapeHtml(j.department)}</span>` : "",
+        ].filter(Boolean).join(" ");
+        return `<div class="bg-gray-50 border border-gray-100 rounded-lg p-3">
+          <div class="text-sm font-medium">${escapeHtml(j.title || "Untitled role")}</div>
+          ${badges ? `<div class="flex flex-wrap gap-1.5 mt-1.5">${badges}</div>` : ""}
+          ${j.url ? `<a href="${escapeHtml(j.url)}" target="_blank" class="inline-block mt-2 text-xs text-red-700 font-medium">View & Apply →</a>` : ""}
+        </div>`;
+      }).join("")
+    : `<div class="col-span-2 text-sm text-gray-400 py-6 text-center">No listings indexed after filters for this source yet.</div>`;
 
   const win = document.getElementById("jobsModalBody");
-  win.innerHTML = rows;
+  win.innerHTML = cards;
   document.getElementById("jobsModalTitle").textContent = `${name} — ${jobs.length} filtered role${jobs.length === 1 ? "" : "s"}`;
   document.getElementById("jobsModal").classList.remove("hidden");
 }

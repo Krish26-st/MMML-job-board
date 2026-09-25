@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from celery import Celery, chain
 
 from .config import settings
@@ -96,6 +96,7 @@ def sync_source(self, source_id: int):
                     external_id=j.get("external_id"),
                     title=j.get("title"),
                     location=j.get("location"),
+                    department=j.get("department"),
                     url=j.get("url"),
                     raw=j.get("raw"),
                 ))
@@ -104,7 +105,7 @@ def sync_source(self, source_id: int):
             source.source_type = source_type
             source.status = "active"
             source.last_error = None
-            source.last_sync = datetime.utcnow()
+            source.last_sync = datetime.now(timezone.utc)
             source.detection_debug = {
                 **{k: v for k, v in data.items() if k != "jobs"},
                 "fetched_before_filters": len(raw_jobs),
