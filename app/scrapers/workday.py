@@ -26,11 +26,8 @@ async def fetch_workday_jobs(url: str) -> dict:
     if not parts:
         raise ValueError(f"Could not parse a Workday tenant/site from {url}")
 
-    api_url = (
-        f"https://{parts['tenant']}.{parts['cluster']}.myworkdayjobs.com"
-        f"/wday/cxs/{parts['tenant']}/{parts['site']}/jobs"
-    )
-    base_url = f"https://{parts['tenant']}.{parts['cluster']}.myworkdayjobs.com"
+    api_url = f"https://{parts['host']}/wday/cxs/{parts['tenant']}/{parts['site']}/jobs"
+    base_url = f"https://{parts['host']}"
 
     jobs = []
     offset = 0

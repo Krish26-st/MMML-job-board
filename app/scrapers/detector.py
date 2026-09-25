@@ -48,20 +48,29 @@ _LOCALE_RE = re.compile(r"^[a-zA-Z]{2}-[a-zA-Z]{2}$")
 
 def extract_workday_parts(url: str) -> dict | None:
     """e.g. https://lseg.wd3.myworkdayjobs.com/Careers?locationCountry=...
-    or     https://lseg.wd3.myworkdayjobs.com/en-US/Careers
-    -> {"tenant": "lseg", "cluster": "wd3", "site": "Careers"}
+    -> {"tenant": "lseg", "host": "lseg.wd3.myworkdayjobs.com", "site": "Careers"}
+
+    or     https://yelp.myworkdayjobs.com/Yelp   (no wd# cluster subdomain --
+    some smaller tenants are hosted this way)
+    -> {"tenant": "yelp", "host": "yelp.myworkdayjobs.com", "site": "Yelp"}
+
+    Rather than assume a fixed number of subdomain parts, this just checks
+    "myworkdayjobs" appears in the host and uses the host exactly as given
+    to build the API URL -- so it works whether or not a cluster subdomain
+    is present.
     """
     parsed = urlparse(url)
-    host_parts = parsed.netloc.split(".")
-    if len(host_parts) < 4 or "myworkdayjobs" not in host_parts[2]:
+    host = parsed.netloc
+    host_parts = host.split(".")
+    if "myworkdayjobs" not in host or len(host_parts) < 3:
         return None
-    tenant, cluster = host_parts[0], host_parts[1]
+    tenant = host_parts[0]
 
     path_parts = [p for p in parsed.path.split("/") if p]
     site = next((p for p in path_parts if not _LOCALE_RE.match(p)), None)
-    if not tenant or not cluster or not site:
+    if not tenant or not site:
         return None
-    return {"tenant": tenant, "cluster": cluster, "site": site}
+    return {"tenant": tenant, "host": host, "site": site}
 
 
 def extract_ashby_board_name(url: str) -> str | None:
