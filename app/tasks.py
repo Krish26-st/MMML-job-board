@@ -113,6 +113,11 @@ def sync_source(self, source_id: int):
             }
 
         except Exception as e:
+            # Without this, a failed sync is invisible: the task itself
+            # still reports "succeeded" (it did run to completion), so the
+            # only trace of *why* a source failed was buried in last_error
+            # with nothing printed to the worker's logs at all.
+            print(f"[sync_source] source_id={source_id} ({source.url}) failed: {e}")
             source.status = "error"
             source.last_error = str(e)[:2000]
 

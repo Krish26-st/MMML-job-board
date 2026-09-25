@@ -132,7 +132,10 @@ async function loadSources() {
            class="text-xs text-gray-400 hover:text-gray-600">${escapeHtml(s.url)} ↗</a>
       </td>
       <td class="px-6 py-4 capitalize text-gray-600">${s.source_type}</td>
-      <td class="px-6 py-4">${statusBadge(s.status)}</td>
+      <td class="px-6 py-4">
+        ${statusBadge(s.status)}
+        ${s.status === "error" && s.last_error ? `<div class="text-xs text-red-500 mt-1 max-w-xs truncate" title="${escapeHtml(s.last_error)}">${escapeHtml(s.last_error)}</div>` : ""}
+      </td>
       <td class="px-6 py-4">
         <button data-view="${s.id}" data-name="${escapeHtml(s.company_name)}" class="font-medium text-red-700 hover:underline">${s.job_count}</button>
       </td>
